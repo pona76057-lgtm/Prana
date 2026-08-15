@@ -1,223 +1,751 @@
-import React, { useState, useEffect, useRef } from 'react';
-import {
-  StyleSheet, Text, View, ScrollView, TouchableOpacity, Switch,
-  TextInput, SafeAreaView, StatusBar, Dimensions, Alert, Platform, Animated
-} from 'react-native';
-import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
-import Svg, { Path, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
-import { LinearGradient as ExpoGradient } from 'expo-linear-gradient';
+09:05 Pongpun.n // [ส่วนที่ 1/20] Imports และจุดเริ่มต้นแอปพลิเคชัน
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
-const { width: screenWidth } = Dimensions.get('window');
+void main() => runApp(const ParnaOrganicApp());
 
-export default function ParnaSmartFarmFull() {
-  // --- States ---
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [activeTab, setActiveTab] = useState('control');
-  const [isAutoMode, setIsAutoMode] = useState(true);
+class ParnaOrganicApp extends StatelessWidget {
+  const ParnaOrganicApp({Key? key}) : super(key: key);
 
-  // --- Config & API ---
-  const [serverUrl] = useState('http://202.139.203.218:8080');
-  const [deviceToken, setDeviceToken] = useState('PARNA-TOKEN-2026-MAIN');
-  const [farmName, setFarmName] = useState('Parna Organic');
+09:06 Pongpun.n // [ส่วนที่ 2/20] โครงสร้างหลักและธีมแอปพลิเคชัน (ThemeData)
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Parna Organic',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: const Color(0xFF0B132B),
+        cardColor: const Color(0xFF1C2541),
+        primaryColor: const Color(0xFF4ADE80),
+        colorScheme: const ColorScheme.dark(
+          primary: Color(0xFF4ADE80),
+          secondary: Color(0xFF38BDF8),
+          surface: Color(0xFF1C2541),
+        ),
+        fontFamily: 'Roboto',
+      ),
+      home: const MainNavigationScreen(),
+    );
+  }
+}
 
-  // --- Sensor Data ---
-  const [sensors, setSensors] = useState({
-    time: '--:--:--',
-    soil1: 0, soil2: 0, tank: 0,
-    temp: 0.0, hum: 0.0, vpd: 0.0,
-  });
-  const [history, setHistory] = useState([0, 0, 0, 0, 0, 0, 0]);
-  const [relays, setRelays] = useState([false, false, false, false, false, false, false, false]);
+09:06 Pongpun.n // [ส่วนที่ 3/20] หน้าจอการนำทางหลัก (MainNavigationScreen State)
+class MainNavigationScreen extends StatefulWidget {
+  const MainNavigationScreen({Key? key}) : super(key: key);
 
-  // --- Sync Data from Cloud ---
-  useEffect(() => {
-    let interval;
-    if (isLoggedIn) {
-      const fetchData = async () => {
-        try {
-          let response = await fetch(`${serverUrl}/api/get-device-data`, {
-            headers: { 'Authorization': `Bearer ${deviceToken}` }
-          });
-          if (response.ok) {
-            let json = await response.json();
-            setSensors({
-              time: json.time || '--:--:--',
-              soil1: json.soil1 ?? 0,
-              soil2: json.soil2 ?? 0,
-              tank: json.tank ?? 0,
-              temp: json.temp ?? 0.0,
-              hum: json.hum ?? 0.0,
-              vpd: json.vpd ?? 0.0,
+  @override
+  _MainNavigationScreenState createState() => _MainNavigationScreenState();
+}
+
+class _MainNavigationScreenState extends State<MainNavigationScreen> {
+  int _currentIndex = 0;
+  final String serverIp = '202.139.203.218';
+  final int serverPort = 8080;
+  final String deviceToken = 'PARNA-TOKEN-2026-MAIN';
+
+09:06 Pongpun.n // [ส่วนที่ 4/20] แถบล่างและการสลับหน้าจอ (BottomNavigationBar)
+  @override
+  Widget build(BuildContext context) {
+    final List<Widget> pages = [
+      DashboardTab(serverIp: serverIp, serverPort: serverPort, deviceToken: deviceToken),
+      AnalyticsTab(serverIp: serverIp, serverPort: serverPort, deviceToken: deviceToken),
+      SettingsTab(serverIp: serverIp, serverPort: serverPort, deviceToken: deviceToken),
+      PlantConditionTab(serverIp: serverIp, serverPort: serverPort, deviceToken: deviceToken),
+    ];
+
+    return Scaffold(
+      body: pages[_currentIndex],
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, -5))
+          ],
+        ),
+        child: BottomNavigationBar(
+          currentIndex: _currentIndex,
+          backgroundColor: const Color(0xFF1C2541),
+          selectedItemColor: const Color(0xFF4ADE80),
+          unselectedItemColor: Colors.white54,
+          type: BottomNavigationBarType.fixed,
+          elevation: 10,
+          onTap: (index) {
+            setState(() {
+              _currentIndex = index;
             });
-            if (json.relays) setRelays(json.relays);
-            setHistory(prev => [...prev.slice(-6), json.soil1 ?? 0]);
+          },
+          items: const [
+            BottomNavigationBarItem(icon: Icon(Icons.dashboard_rounded), label: 'หน้าแรก 📊'),
+            BottomNavigationBarItem(icon: Icon(Icons.analytics_rounded), label: 'สถิติ 📈'),
+            BottomNavigationBarItem(icon: Icon(Icons.settings_rounded), label: 'ตั้งค่า ⚙️'),
+            BottomNavigationBarItem(icon: Icon(Icons.eco_rounded), label: 'สุขภาพพืช 🤭☘️'),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+09:06 Pongpun.n // [ส่วนที่ 5/20] เริ่มต้นคลาส DashboardTab และตัวแปรสถานะเซ็นเซอร์
+// ==================== 1. แท็บหน้าแรก (DASHBOARD) ====================
+class DashboardTab extends StatefulWidget {
+  final String serverIp;
+  final int serverPort;
+  final String deviceToken;
+  const DashboardTab({Key? key, required this.serverIp, required this.serverPort, required this.deviceToken}) : super(key: key);
+
+  @override
+  _DashboardTabState createState() => _DashboardTabState();
+}
+
+class _DashboardTabState extends State<DashboardTab> {
+  List<bool> relayStates = List<bool>.filled(8, false);
+  bool isAutoMode = true;
+  int soil1 = 30;
+  int soil2 = 25;
+  int tankLevel = 80;
+  double temp = 28.5;
+  double humidity = 82.0;
+  double vpd = 1.1;
+  String diseaseRisk = "สูง (High) 🔴 อันตราย 🥵";
+  String diseaseAdvice = "เสี่ยงสูงเกิดโรคราน้ำค้างและเชื้อรา ควร รีบระบายอากาศและพ่นยา 🤭🦠";
+  bool isSyncing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncDataFromBoard();
+  }
+
+09:06 Pongpun.n // [ส่วนที่ 6/20] ฟังก์ชันซิงค์ข้อมูลจากบอร์ด IoT (API Get Request)
+  Future<void> _syncDataFromBoard() async {
+    if (isSyncing) return;
+    setState(() => isSyncing = true);
+    
+    try {
+      final url = Uri.parse('http://${widget.serverIp}:${widget.serverPort}/api/device-sync');
+      final response = await http.get(
+        url,
+        headers: {'Authorization': 'Bearer ${widget.deviceToken}'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() {
+          soil1 = data['soil1'] ?? soil1;
+          soil2 = data['soil2'] ?? soil2;
+          tankLevel = data['tankLevel'] ?? tankLevel;
+          temp = (data['temperature'] as num?)?.toDouble() ?? temp;
+          humidity = (data['airHumidity'] as num?)?.toDouble() ?? humidity;
+          vpd = (data['vpd'] as num?)?.toDouble() ?? vpd;
+          
+          if (data.containsKey('isAuto')) isAutoMode = data['isAuto'];
+          if (data.containsKey('diseaseRisk')) diseaseRisk = data['diseaseRisk'];
+          if (data.containsKey('diseaseAdvice')) diseaseAdvice = data['diseaseAdvice'];
+          
+          if (data.containsKey('relays')) {
+            List fetchedRelays = data['relays'];
+            for (int i = 0; i < fetchedRelays.length && i < relayStates.length; i++) {
+              relayStates[i] = fetchedRelays[i];
+            }
           }
-        } catch (e) { /* background fail silent */ }
-      };
-      fetchData();
-      interval = setInterval(fetchData, 4000);
+        });
+      }
+    } catch (e) {
+      debugPrint('Sync Error: $e');
+    } finally {
+      setState(() => isSyncing = false);
     }
-    return () => clearInterval(interval);
-  }, [isLoggedIn]);
+  }
 
-  // --- UI Logic: Dynamic Theme ---
-  const getThemeColors = () => {
-    if (sensors.hum > 80) return ['#0c4a6e', '#075985', '#0ea5e9']; // Rainy
-    const hr = new Date().getHours();
-    if (hr >= 18 || hr < 6) return ['#0f172a', '#1e293b', '#334155']; // Night
-    return ['#064e3b', '#065f46', '#059669']; // Sunny/Green
-  };
+09:07 Pongpun.n // [ส่วนที่ 7/20] ฟังก์ชันควบคุมรีเลย์และโหมดอัตโนมัติ (API Post Request)
+  Future<void> _toggleRelay(int channel, bool state) async {
+    setState(() {
+      relayStates[channel] = state;
+    });
 
-  // --- Components ---
-  const VPDRiskGauge = ({ value }) => {
-    const color = value < 0.8 ? '#38bdf8' : value <= 1.2 ? '#4ade80' : value <= 1.6 ? '#fbbf24' : '#f87171';
-    return (
-      <View style={styles.glassCard}>
-        <Text style={styles.cardHeader}>🌿 วิเคราะห์ความเสี่ยงพืช (VPD)</Text>
-        <View style={styles.gaugeContainer}>
-          <Svg height="100" width="160" viewBox="0 0 100 60">
-            <Path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="8" strokeLinecap="round" />
-            <Path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke={color} strokeWidth="8" strokeDasharray="126" strokeDashoffset={126 - (Math.min(value / 2, 1) * 126)} strokeLinecap="round" />
-          </Svg>
-          <View style={styles.gaugeTextOverlay}>
-            <Text style={[styles.gaugeValue, { color }]}>{value.toFixed(2)}</Text>
-            <Text style={{color: '#fff', fontSize: 10}}>kPa</Text>
-          </View>
-        </View>
-        <Text style={styles.statusText}>สถานะ: {value > 1.5 ? '⚠️ อากาศแห้งไป' : '✅ สภาวะปกติ'}</Text>
-      </View>
-    );
-  };
+    try {
+      final url = Uri.parse('http://${widget.serverIp}:${widget.serverPort}/api/device-sync');
+      await http.post(
+        url,
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ${widget.deviceToken}'},
+        body: jsonEncode({
+          'token': widget.deviceToken,
+          'action': 'relay',
+          'channel': channel,
+          'state': state,
+          'relays': relayStates,
+        }),
+      );
+      _syncDataFromBoard();
+    } catch (e) {
+      debugPrint('Toggle Relay Error: $e');
+    }
+  }
 
-  const BIGraph = ({ data }) => {
-    const h = 80; const w = screenWidth - 70;
-    const points = data.map((v, i) => `${i * (w / 6)},${h - (v / 100) * h}`).join(' ');
-    return (
-      <View style={styles.glassCard}>
-        <Text style={styles.cardHeader}>📈 สถิติความชื้นดิน (Real-time BI)</Text>
-        <Svg height={h} width={w}>
-          <Defs>
-            <LinearGradient id="g" x1="0" y1="0" x2="0" y2="1"><Stop offset="0" stopColor="#00f5d4" stopOpacity="0.3"/><Stop offset="1" stopColor="#00f5d4" stopOpacity="0"/></LinearGradient>
-          </Defs>
-          <Path d={`M 0,${h} ${points} ${w},${h}`} fill="url(#g)" />
-          <Path d={`M ${points}`} fill="none" stroke="#00f5d4" strokeWidth="3" />
-        </Svg>
-      </View>
-    );
-  };
+  Future<void> _toggleAutoMode(bool val) async {
+    setState(() {
+      isAutoMode = val;
+    });
 
-  // --- Main Render ---
-  if (!isLoggedIn) {
-    return (
-      <ExpoGradient colors={['#051611', '#064e3b']} style={styles.fullScreen}>
-        <View style={styles.loginContainer}>
-          <MaterialCommunityIcons name="leaf" size={80} color="#00f5d4" />
-          <Text style={styles.loginTitle}>PARNA SMART FARM</Text>
-          <View style={styles.glassInputBox}>
-            <TextInput style={styles.input} placeholder="Username" placeholderTextColor="#aaa" value={username} onChangeText={setUsername} />
-            <TextInput style={styles.input} placeholder="Password" secureTextEntry placeholderTextColor="#aaa" value={password} onChangeText={setPassword} />
-            <TouchableOpacity style={styles.loginBtn} onPress={() => setIsLoggedIn(true)}>
-              <Text style={styles.loginBtnText}>CONNECT SYSTEM</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </ExpoGradient>
+    try {
+      final url = Uri.parse('http://${widget.serverIp}:${widget.serverPort}/api/device-sync');
+      await http.post(
+        url,
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ${widget.deviceToken}'},
+        body: jsonEncode({
+          'token': widget.deviceToken,
+          'isAuto': isAutoMode,
+        }),
+      );
+      _syncDataFromBoard();
+    } catch (e) {
+      debugPrint('Toggle Auto Mode Error: $e');
+    }
+  }
+
+09:07 Pongpun.n // [ส่วนที่ 8/20] โครงสร้างหน้า Dashboard และส่วนหัวแอป
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: const [
+                Icon(Icons.eco_rounded, color: Color(0xFF4ADE80), size: 28),
+                SizedBox(width: 8),
+                Text('Parna Organic', style: TextStyle(color: Color(0xFF4ADE80), fontWeight: FontWeight.bold, fontSize: 20)),
+              ],
+            ),
+            Row(
+              children: [
+                const Icon(Icons.access_time_rounded, size: 16, color: Colors.white70),
+                const SizedBox(width: 4),
+                Text('${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}', style: const TextStyle(fontSize: 14, color: Colors.white75, fontWeight: FontWeight.w600)),
+              ],
+            )
+          ],
+        ),
+        backgroundColor: const Color(0xFF1C2541),
+        elevation: 0,
+      ),
+
+09:07 Pongpun.n // [ส่วนที่ 9/20] การแสดงผลการ์ดเซ็นเซอร์ต่างๆ ในหน้าแรก
+      body: ListView(
+        padding: const EdgeInsets.all(16.0),
+        children: [
+          Row(
+            children: [
+              _buildSensorCard('🌱 ความชื้นดิน 1', 'Soil Moisture 1', '$soil1%', const Color(0xFF4ADE80)),
+              const SizedBox(width: 12),
+              _buildSensorCard('💧 ระดับน้ำแท็งก์', 'Tank Level', '$tankLevel%', const Color(0xFF38BDF8)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _buildSensorCard('🌡️ อุณหภูมิอากาศ', 'Temperature', '${temp.toStringAsFixed(0)}°C', const Color(0xFFFB923C)),
+              const SizedBox(width: 12),
+              _buildSensorCard('☁️ ความชื้นอากาศ', 'Air Humidity', '${humidity.toStringAsFixed(0)}%', const Color(0xFFC084FC)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _buildSensorCard('🌱 ความชื้นดิน 2', 'Soil Moisture 2', '$soil2%', const Color(0xFF4ADE80)),
+              const SizedBox(width: 12),
+              _buildSensorCard('🛡️ VPD (ความดันไอ)', 'Vapor Pressure', '${vpd.toStringAsFixed(2)} kPa', const Color(0xFFFACC15)),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+09:07 Pongpun.n // [ส่วนที่ 10/20] การ์ดวิเคราะห์ความเสี่ยงโรคพืช
+          Container(
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(colors: [Color(0xFF1C2541), Color(0xFF0B132B)]),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFF4ADE80).withOpacity(0.3)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('🛡️ วิเคราะห์ความเสี่ยงโรคพืช', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(color: const Color(0xFF4ADE80).withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
+                        child: const Text('🟢 ปลอดภัย', style: TextStyle(color: Color(0xFF4ADE80), fontSize: 12, fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('✅ สภาพแวดล้อมเหมาะสม ไม่พบความเสี่ยงโรคพืชในขณะนี้', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _smallInfoCol('VPD', '${vpd.toStringAsFixed(2)} kPa'),
+                      _smallInfoCol('ความชื้นอากาศ', '${humidity.toStringAsFixed(0)} %'),
+                      _smallInfoCol('อุณหภูมิ', '${temp.toStringAsFixed(1)} °C'),
+                      _smallInfoCol('ความชื้นดิน', '$soil1 %'),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+09:07 Pongpun.n // [ส่วนที่ 11/20] ส่วนควบคุมรีเลย์ระบบน้ำ (Grid ปุ่มวาล์วทั้งหมด)
+          Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF1C2541),
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 8, offset: const Offset(0, 4))],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('🎛️ ควบคุมรีเลย์ระบบน้ำ', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                      Row(
+                        children: [
+                          const Text('🤖 AUTO', style: TextStyle(color: Color(0xFF4ADE80), fontSize: 13, fontWeight: FontWeight.bold)),
+                          const SizedBox(width: 4),
+                          Switch(
+                            value: isAutoMode,
+                            activeColor: const Color(0xFF4ADE80),
+                            onChanged: _toggleAutoMode,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  GridView.count(
+                    crossAxisCount: 4,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
+                    childAspectRatio: 0.85,
+                    children: [
+                      _buildRelayButtonCard(0, 'วาล์ว 1', Icons.settings_rounded),
+                      _buildRelayButtonCard(1, 'วาล์ว 2', Icons.settings_rounded),
+                      _buildRelayButtonCard(2, 'วาล์ว 3', Icons.settings_rounded),
+                      _buildRelayButtonCard(3, 'วาล์ว 4', Icons.settings_rounded),
+                      _buildRelayButtonCard(4, 'วาล์ว 5', Icons.settings_rounded),
+                      _buildRelayButtonCard(5, 'วาล์ว 6', Icons.settings_rounded),
+                      _buildRelayButtonCard(6, 'วาล์ว 7', Icons.science_rounded),
+                      _buildRelayButtonCard(7, 'ปั๊มน้ำ', Icons.water_drop_rounded),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  return (
-    <ExpoGradient colors={getThemeColors()} style={styles.fullScreen}>
-      <StatusBar barStyle="light-content" />
-      <SafeAreaView style={{ flex: 1 }}>
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.headerTitle}>{farmName}</Text>
-            <Text style={styles.headerSub}>● {sensors.time} | Online</Text>
-          </View>
-          <TouchableOpacity style={styles.profileCircle}><Ionicons name="person" size={20} color="#fff" /></TouchableOpacity>
-        </View>
+09:07 Pongpun.n // [ส่วนที่ 12/20] ฟังก์ชันย่อยสำหรับสร้าง UI การ์ดเซ็นเซอร์และปุ่มรีเลย์
+  Widget _buildSensorCard(String title, String subtitle, String value, Color accentColor) {
+    return Expanded(
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF1C2541),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: accentColor.withOpacity(0.3), width: 1.2),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(14.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: TextStyle(color: accentColor, fontWeight: FontWeight.bold, fontSize: 13)),
+              if (subtitle.isNotEmpty) Text(subtitle, style: const TextStyle(color: Colors.white54, fontSize: 10)),
+              const SizedBox(height: 10),
+              Text(value, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
-        <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 100 }}>
-          {/* Top Metrics */}
-          <View style={styles.metricsRow}>
-            <View style={styles.miniCard}><Text style={styles.miniVal}>{sensors.temp}°</Text><Text style={styles.miniLab}>Temp</Text></View>
-            <View style={styles.miniCard}><Text style={styles.miniVal}>{sensors.hum}%</Text><Text style={styles.miniLab}>Hum</Text></View>
-            <View style={styles.miniCard}><Text style={styles.miniVal}>{sensors.tank}%</Text><Text style={styles.miniLab}>Tank</Text></View>
-          </View>
+  Widget _smallInfoCol(String label, String val) {
+    return Column(
+      children: [
+        Text(label, style: const TextStyle(color: Colors.white54, fontSize: 11)),
+        const SizedBox(height: 2),
+        Text(val, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+      ],
+    );
+  }
 
-          {activeTab === 'control' ? (
-            <>
-              <VPDRiskGauge value={sensors.vpd} />
-              <BIGraph data={history} />
-              
-              <View style={styles.glassCard}>
-                <View style={styles.cardHeaderRow}>
-                  <Text style={styles.cardHeader}>🎮 การควบคุมรีเลย์</Text>
-                  <Switch value={isAutoMode} onValueChange={setIsAutoMode} trackColor={{true: '#00f5d4'}} />
-                </View>
-                <View style={styles.relayGrid}>
-                  {relays.map((on, i) => (
-                    <TouchableOpacity key={i} style={[styles.relayBtn, on && styles.relayBtnOn]}>
-                      <MaterialCommunityIcons name={i === 7 ? "water-pump" : "valve"} size={24} color={on ? "#000" : "#00f5d4"} />
-                      <Text style={[styles.relayLabel, {color: on ? '#000' : '#fff'}]}>{i === 7 ? 'PUMP' : `V${i+1}`}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            </>
-          ) : (
-            <View style={styles.glassCard}>
-              <Text style={styles.cardHeader}>⚙️ ตั้งค่าระบบ</Text>
-              <Text style={styles.label}>Farm Name</Text>
-              <TextInput style={styles.inputStyle} value={farmName} onChangeText={setFarmName} />
-              <Text style={styles.label}>Device Token</Text>
-              <TextInput style={styles.inputStyle} value={deviceToken} onChangeText={setDeviceToken} />
-              <TouchableOpacity style={styles.saveBtn}><Text style={{fontWeight: 'bold'}}>SAVE CONFIG</Text></TouchableOpacity>
-            </View>
-          )}
-        </ScrollView>
-
-        {/* Tab Bar */}
-        <View style={styles.tabBar}>
-          <TouchableOpacity onPress={() => setActiveTab('control')}><Ionicons name="grid" size={24} color={activeTab === 'control' ? '#00f5d4' : '#fff'} /></TouchableOpacity>
-          <TouchableOpacity onPress={() => setActiveTab('settings')}><Ionicons name="settings" size={24} color={activeTab === 'settings' ? '#00f5d4' : '#fff'} /></TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    </ExpoGradient>
-  );
+  Widget _buildRelayButtonCard(int index, String label, IconData icon) {
+    bool isOn = relayStates[index];
+    return GestureDetector(
+      onTap: () => _toggleRelay(index, !isOn),
+      child: Container(
+        decoration: BoxDecoration(
+          color: isOn ? const Color(0xFF0B132B) : const Color(0xFF162038),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isOn ? const Color(0xFF4ADE80) : Colors.white12,
+            width: isOn ? 1.5 : 1.0,
+          ),
+          boxShadow: isOn ? [BoxShadow(color: const Color(0xFF4ADE80).withOpacity(0.2), blurRadius: 6, spreadRadius: 1)] : [],
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: isOn ? const Color(0xFF4ADE80) : Colors.white60, size: 24),
+            const SizedBox(height: 6),
+            Text(label, style: TextStyle(color: isOn ? const Color(0xFF4ADE80) : Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: isOn ? const Color(0xFF4ADE80) : Colors.redAccent,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
-const styles = StyleSheet.create({
-  fullScreen: { flex: 1 },
-  loginContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 30 },
-  loginTitle: { color: '#00f5d4', fontSize: 24, fontWeight: '900', marginVertical: 20 },
-  glassInputBox: { width: '100%', padding: 25, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 30, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
-  input: { height: 50, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.2)', color: '#fff', marginBottom: 20 },
-  loginBtn: { backgroundColor: '#00f5d4', height: 50, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginTop: 10 },
-  loginBtnText: { fontWeight: 'bold', letterSpacing: 1 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center' },
-  headerTitle: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
-  headerSub: { color: '#00f5d4', fontSize: 12 },
-  profileCircle: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
-  glassCard: { backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 25, padding: 20, marginBottom: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
-  cardHeader: { color: '#fff', fontWeight: 'bold', fontSize: 16, marginBottom: 15 },
-  metricsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
-  miniCard: { width: '30%', backgroundColor: 'rgba(255,255,255,0.15)', padding: 15, borderRadius: 20, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
-  miniVal: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  miniLab: { color: 'rgba(255,255,255,0.6)', fontSize: 10 },
-  gaugeContainer: { alignItems: 'center', justifyContent: 'center' },
-  gaugeTextOverlay: { position: 'absolute', top: 30, alignItems: 'center' },
-  gaugeValue: { fontSize: 22, fontWeight: 'bold' },
-  statusText: { textAlign: 'center', color: '#fff', marginTop: 10, fontSize: 12 },
-  relayGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  relayBtn: { width: '23%', aspectRatio: 1, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginBottom: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
-  relayBtnOn: { backgroundColor: '#00f5d4' },
-  relayLabel: { fontSize: 9, fontWeight: 'bold', marginTop: 5 },
-  tabBar: { position: 'absolute', bottom: 30, left: 60, right: 60, height: 60, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 30, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
-  inputStyle: { backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 10, padding: 12, color: '#fff', marginBottom: 15 },
-  label: { color: '#00f5d4', fontSize: 12, marginBottom: 5 },
-  saveBtn: { backgroundColor: '#00f5d4', padding: 15, borderRadius: 12, alignItems: 'center' },
-  cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }
-});
+09:07 Pongpun.n // [ส่วนที่ 13/20] แท็บสถิติและกราฟย้อนหลัง (AnalyticsTab)
+// ==================== 2. แท็บสถิติ (ANALYTICS) ====================
+class AnalyticsTab extends StatelessWidget {
+  final String serverIp;
+  final int serverPort;
+  final String deviceToken;
+  const AnalyticsTab({Key? key, required this.serverIp, required this.serverPort, required this.deviceToken}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('📈 สถิติและกราฟย้อนหลัง'), backgroundColor: const Color(0xFF1C2541)),
+      body: ListView(
+        padding: const EdgeInsets.all(16.0),
+        children: const [
+          Card(child: Padding(padding: EdgeInsets.all(16.0), child: Text('ความชื้นในดิน (7 วันย้อนหลัง) - แปลงที่ 1\n[ พื้นที่แสดงกราฟ ] 🌱', style: TextStyle(fontSize: 16)))),
+          SizedBox(height: 16),
+          Card(child: Padding(padding: EdgeInsets.all(16.0), child: Text('สถิติระดับน้ำในถังเก็บ\n[ พื้นที่แสดงกราฟ ] 💧', style: TextStyle(fontSize: 16)))),
+          SizedBox(height: 16),
+          Card(child: Padding(padding: EdgeInsets.all(16.0), child: Text('แนวโน้มอุณหภูมิและความชื้นอากาศ\n[ พื้นที่แสดงกราฟ ] 🌡️', style: TextStyle(fontSize: 16)))),
+        ],
+      ),
+    );
+  }
+}
+
+09:08 Pongpun.n // [ส่วนที่ 14/20] เริ่มต้นแท็บตั้งค่า (SettingsTab State & ตัวแปร)
+// ==================== 3. แท็บตั้งค่า (SETTINGS) ====================
+class SettingsTab extends StatefulWidget {
+  final String serverIp;
+  final int serverPort;
+  final String deviceToken;
+  const SettingsTab({Key? key, required this.serverIp, required this.serverPort, required this.deviceToken}) : super(key: key);
+
+  @override
+  _SettingsTabState createState() => _SettingsTabState();
+}
+
+class _SettingsTabState extends State<SettingsTab> {
+  bool isAutoMode = true;
+  bool usePump = true;
+  List<int> valveDurationMin = [5, 5, 5, 5, 5, 5]; 
+  int pumpDelaySec = 3;      
+
+  final String mainToken = 'PARNA-TOKEN-2026-MAIN';
+  final String bed1Token = 'PARNA-TOKEN-BED1-2026';
+  final String bed2Token = 'PARNA-TOKEN-BED2-2026';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettingsFromServer();
+  }
+
+09:08 Pongpun.n // [ส่วนที่ 15/20] ฟังก์ชันโหลดและบันทึกการตั้งค่าจากเซิร์ฟเวอร์
+  Future<void> _loadSettingsFromServer() async {
+    try {
+      final url = Uri.parse('http://${widget.serverIp}:${widget.serverPort}/api/device-sync');
+      final response = await http.get(
+        url,
+        headers: {'Authorization': 'Bearer ${widget.deviceToken}'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() {
+          if (data.containsKey('isAuto')) isAutoMode = data['isAuto'];
+          if (data.containsKey('usePump')) usePump = data['usePump'];
+          
+          if (data.containsKey('valveDurationMin')) {
+            List fetchedDur = data['valveDurationMin'];
+            for (int i = 0; i < fetchedDur.length && i < valveDurationMin.length; i++) {
+              valveDurationMin[i] = fetchedDur[i];
+            }
+          }
+
+          if (data.containsKey('pumpDelay')) {
+            pumpDelaySec = data['pumpDelay'];
+          } else if (data.containsKey('pumpDelaySec')) {
+            pumpDelaySec = data['pumpDelaySec'];
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Load Settings Error: $e');
+    }
+  }
+
+  void _copyToClipboard(String tokenText, String labelName) {
+    Clipboard.setData(ClipboardData(text: tokenText));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('คัดลอก $labelName สำเร็จ! 📋', style: const TextStyle(color: Colors.white)), backgroundColor: const Color(0xFF1C2541)),
+    );
+  }
+
+  Future<void> _saveSettings() async {
+    try {
+      final url = Uri.parse('http://${widget.serverIp}:${widget.serverPort}/api/device-sync');
+      await http.post(
+        url,
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ${widget.deviceToken}'},
+        body: jsonEncode({
+          'token': widget.deviceToken,
+          'isAuto': isAutoMode,
+          'usePump': usePump,
+          'valveDurationMin': valveDurationMin,
+          'pumpDelay': pumpDelaySec,
+          'pumpDelaySec': pumpDelaySec,
+        }),
+      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('บันทึกการตั้งค่าสำเร็จ! 🚀')));
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เกิดข้อผิดพลาด: $e')));
+    }
+  }
+
+09:08 Pongpun.n // [ส่วนที่ 16/20] UI แถวปรับตั้งเวลาวาล์วแต่ละตัว
+  Widget _buildValveTimerRow(int valveIndex) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text('วาล์ว ${valveIndex + 1}: ${valveDurationMin[valveIndex]} นาที', style: const TextStyle(fontSize: 14)),
+          Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.remove_circle_rounded, color: Colors.redAccent, size: 26),
+                onPressed: () {
+                  setState(() {
+                    if (valveDurationMin[valveIndex] > 1) valveDurationMin[valveIndex] -= 1;
+                  });
+                },
+              ),
+              Text('${valveDurationMin[valveIndex]}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              IconButton(
+                icon: const Icon(Icons.add_circle_rounded, color: Color(0xFF4ADE80), size: 26),
+                onPressed: () {
+                  setState(() {
+                    if (valveDurationMin[valveIndex] < 120) valveDurationMin[valveIndex] += 1;
+                  });
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+09:08 Pongpun.n // [ส่วนที่ 17/20] โครงสร้างหน้าจอตั้งค่าทั้งหมด (Settings UI)
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('⚙️ ตั้งค่าระบบฟาร์ม'), backgroundColor: const Color(0xFF1C2541)),
+      body: ListView(
+        padding: const EdgeInsets.all(16.0),
+        children: [
+          SwitchListTile(
+            title: const Text('โหมดอัตโนมัติ (SPV และตั้งเวลา)', style: TextStyle(fontWeight: FontWeight.bold)),
+            value: isAutoMode,
+            activeColor: const Color(0xFF4ADE80),
+            onChanged: (val) => setState(() => isAutoMode = val),
+          ),
+          const Divider(color: Colors.white24),
+          const Text('⏱️ ตั้งเวลาเปิดวาล์วกันลืม (วาล์ว 1-6 หน่วยเป็นนาที)', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF4ADE80))),
+          const SizedBox(height: 6),
+          
+          ...List.generate(6, (index) => _buildValveTimerRow(index)),
+
+          const Divider(color: Colors.white24),
+          const Text('⚙️ หน่วงเวลาปั๊มน้ำหลัก (Pump Delay)', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF4ADE80))),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('หน่วงเวลา: $pumpDelaySec วินาที', style: const TextStyle(fontSize: 15)),
+                Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.remove_circle_rounded, color: Colors.redAccent, size: 30),
+                      onPressed: () {
+                        setState(() {
+                          if (pumpDelaySec > 0) pumpDelaySec -= 1;
+                        });
+                      },
+                    ),
+                    Text('$pumpDelaySec', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    IconButton(
+                      icon: const Icon(Icons.add_circle_rounded, color: Color(0xFF4ADE80), size: 30),
+                      onPressed: () {
+                        setState(() {
+                          if (pumpDelaySec < 60) pumpDelaySec += 1;
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+09:08 Pongpun.n // [ส่วนที่ 18/20] ส่วนจัดการ Token และปุ่มบันทึกการตั้งค่า
+          const Divider(color: Colors.white24),
+          const Text('🔑 จัดการรหัสอุปกรณ์ (Token สำหรับบอร์ด)', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF4ADE80))),
+          ListTile(
+            title: const Text('บอร์ดหลัก (NodeMCU)'),
+            subtitle: Text(mainToken, style: const TextStyle(color: Color(0xFF4ADE80))),
+            trailing: IconButton(
+              icon: const Icon(Icons.copy_rounded, color: Colors.white70),
+              onPressed: () => _copyToClipboard(mainToken, 'Token บอร์ดหลัก'),
+            ),
+          ),
+          ListTile(
+            title: const Text('Wemos แปลงที่ 1'),
+            subtitle: Text(bed1Token, style: const TextStyle(color: Color(0xFF4ADE80))),
+            trailing: IconButton(
+              icon: const Icon(Icons.copy_rounded, color: Colors.white70),
+              onPressed: () => _copyToClipboard(bed1Token, 'Token Wemos แปลง 1'),
+            ),
+          ),
+          ListTile(
+            title: const Text('Wemos แปลงที่ 2'),
+            subtitle: Text(bed2Token, style: const TextStyle(color: Color(0xFF4ADE80))),
+            trailing: IconButton(
+              icon: const Icon(Icons.copy_rounded, color: Colors.white70),
+              onPressed: () => _copyToClipboard(bed2Token, 'Token Wemos แปลง 2'),
+            ),
+          ),
+          const Divider(color: Colors.white24),
+          const SizedBox(height: 10),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF4ADE80),
+              foregroundColor: const Color(0xFF0B132B),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: _saveSettings,
+            child: const Text('บันทึกการตั้งค่า 💾', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+09:08 Pongpun.n // [ส่วนที่ 19/20] เริ่มต้นแท็บสุขภาพพืช (PlantConditionTab)
+// ==================== 4. แท็บสุขภาพพืช (PLANT CONDITION) ====================
+class PlantConditionTab extends StatelessWidget {
+  final String serverIp;
+  final int serverPort;
+  final String deviceToken;
+  const PlantConditionTab({Key? key, required this.serverIp, required this.serverPort, required this.deviceToken}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('สภาพพืชและความเสี่ยง 🤭☘️😂'), backgroundColor: const Color(0xFF1C2541)),
+      body: ListView(
+        padding: const EdgeInsets.all(16.0),
+        children: const [
+          Card(
+            child: Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('🚨 ประเมินความเสี่ยงโรคพืช 🦠', style: TextStyle(color: Colors.redAccent, fontSize: 18, fontWeight: FontWeight.bold)),
+                  SizedBox(height: 8),
+                  Text('สูง (High) 🔴 อันตราย 🥵', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                  SizedBox(height: 4),
+                  Text('เสี่ยงสูงเกิดโรคราน้ำค้างและเชื้อรา ควร รีบระบายอากาศและพ่นยา 🤭🦠', style: TextStyle(color: Colors.white70)),
+                ],
+              ),
+            ),
+          ),
+          SizedBox(height: 16),
+
+09:08 Pongpun.n // [ส่วนที่ 20/20] รายงานการขาดธาตุอาหารและแมลงศัตรูพืช (สิ้นสุดโปรแกรม)
+          Card(
+            child: Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('⚠️ การขาดธาตุอาหารพืช ☘️', style: TextStyle(color: Colors.amberAccent, fontSize: 18, fontWeight: FontWeight.bold)),
+                  SizedBox(height: 8),
+                  Text('ปานกลาง (Moderate) 🟡 ระดับเฝ้าระวัง 🥲', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                  SizedBox(height: 4),
+                  Text('พบสัญญาณเบื้องต้นของการขาดธาตุไนโตรเจน (ใบแก่เหลือง) ในแปลงปลูกที่ 2 ☘️🪾', style: TextStyle(color: Colors.white70)),
+                ],
+              ),
+            ),
+          ),
+          SizedBox(height: 16),
+          Card(
+            child: Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('🐜 รายงานแมลงศัตรูพืช 🌴', style: TextStyle(color: Color(0xFF4ADE80), fontSize: 18, fontWeight: FontWeight.bold)),
+                  SizedBox(height: 8),
+                  Text('ต่ำ (Low) 🟢 ปลอดภัย 😚', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                  SizedBox(height: 4),
+                  Text('พบเพลี้ยอ่อนระบาดเล็กน้อยในแปลงปลูกที่ 1 ไม่ต้องดำเนินการทันที ให้เฝ้าระวังต่อ 🐜🌴', style: TextStyle(color: Colors.white70)),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

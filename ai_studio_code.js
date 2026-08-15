@@ -1,4 +1,4 @@
-09:05 Pongpun.n // [ส่วนที่ 1/20] Imports และจุดเริ่มต้นแอปพลิเคชัน
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:convert';
@@ -8,8 +8,6 @@ void main() => runApp(const ParnaOrganicApp());
 
 class ParnaOrganicApp extends StatelessWidget {
   const ParnaOrganicApp({Key? key}) : super(key: key);
-
-09:06 Pongpun.n // [ส่วนที่ 2/20] โครงสร้างหลักและธีมแอปพลิเคชัน (ThemeData)
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -32,7 +30,6 @@ class ParnaOrganicApp extends StatelessWidget {
   }
 }
 
-09:06 Pongpun.n // [ส่วนที่ 3/20] หน้าจอการนำทางหลัก (MainNavigationScreen State)
 class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({Key? key}) : super(key: key);
 
@@ -45,8 +42,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   final String serverIp = '202.139.203.218';
   final int serverPort = 8080;
   final String deviceToken = 'PARNA-TOKEN-2026-MAIN';
-
-09:06 Pongpun.n // [ส่วนที่ 4/20] แถบล่างและการสลับหน้าจอ (BottomNavigationBar)
   @override
   Widget build(BuildContext context) {
     final List<Widget> pages = [
@@ -88,7 +83,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   }
 }
 
-09:06 Pongpun.n // [ส่วนที่ 5/20] เริ่มต้นคลาส DashboardTab และตัวแปรสถานะเซ็นเซอร์
 // ==================== 1. แท็บหน้าแรก (DASHBOARD) ====================
 class DashboardTab extends StatefulWidget {
   final String serverIp;
@@ -119,7 +113,6 @@ class _DashboardTabState extends State<DashboardTab> {
     _syncDataFromBoard();
   }
 
-09:06 Pongpun.n // [ส่วนที่ 6/20] ฟังก์ชันซิงค์ข้อมูลจากบอร์ด IoT (API Get Request)
   Future<void> _syncDataFromBoard() async {
     if (isSyncing) return;
     setState(() => isSyncing = true);
@@ -159,8 +152,6 @@ class _DashboardTabState extends State<DashboardTab> {
       setState(() => isSyncing = false);
     }
   }
-
-09:07 Pongpun.n // [ส่วนที่ 7/20] ฟังก์ชันควบคุมรีเลย์และโหมดอัตโนมัติ (API Post Request)
   Future<void> _toggleRelay(int channel, bool state) async {
     setState(() {
       relayStates[channel] = state;
@@ -206,7 +197,6 @@ class _DashboardTabState extends State<DashboardTab> {
     }
   }
 
-09:07 Pongpun.n // [ส่วนที่ 8/20] โครงสร้างหน้า Dashboard และส่วนหัวแอป
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -234,7 +224,7 @@ class _DashboardTabState extends State<DashboardTab> {
         elevation: 0,
       ),
 
-09:07 Pongpun.n // [ส่วนที่ 9/20] การแสดงผลการ์ดเซ็นเซอร์ต่างๆ ในหน้าแรก
+//09:07 Pongpun.n // [ส่วนที่ 9/20] การแสดงผลการ์ดเซ็นเซอร์ต่างๆ ในหน้าแรก
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
@@ -263,7 +253,7 @@ class _DashboardTabState extends State<DashboardTab> {
           ),
           const SizedBox(height: 20),
 
-09:07 Pongpun.n // [ส่วนที่ 10/20] การ์ดวิเคราะห์ความเสี่ยงโรคพืช
+//09:07 Pongpun.n // [ส่วนที่ 10/20] การ์ดวิเคราะห์ความเสี่ยงโรคพืช
           Container(
             decoration: BoxDecoration(
               gradient: const LinearGradient(colors: [Color(0xFF1C2541), Color(0xFF0B132B)]),
@@ -304,7 +294,7 @@ class _DashboardTabState extends State<DashboardTab> {
           ),
           const SizedBox(height: 20),
 
-09:07 Pongpun.n // [ส่วนที่ 11/20] ส่วนควบคุมรีเลย์ระบบน้ำ (Grid ปุ่มวาล์วทั้งหมด)
+//09:07 Pongpun.n // [ส่วนที่ 11/20] ส่วนควบคุมรีเลย์ระบบน้ำ (Grid ปุ่มวาล์วทั้งหมด)
           Container(
             decoration: BoxDecoration(
               color: const Color(0xFF1C2541),
@@ -360,8 +350,6 @@ class _DashboardTabState extends State<DashboardTab> {
       ),
     );
   }
-
-09:07 Pongpun.n // [ส่วนที่ 12/20] ฟังก์ชันย่อยสำหรับสร้าง UI การ์ดเซ็นเซอร์และปุ่มรีเลย์
   Widget _buildSensorCard(String title, String subtitle, String value, Color accentColor) {
     return Expanded(
       child: Container(
@@ -431,8 +419,6 @@ class _DashboardTabState extends State<DashboardTab> {
     );
   }
 }
-
-09:07 Pongpun.n // [ส่วนที่ 13/20] แท็บสถิติและกราฟย้อนหลัง (AnalyticsTab)
 // ==================== 2. แท็บสถิติ (ANALYTICS) ====================
 class AnalyticsTab extends StatelessWidget {
   final String serverIp;
@@ -457,8 +443,6 @@ class AnalyticsTab extends StatelessWidget {
     );
   }
 }
-
-09:08 Pongpun.n // [ส่วนที่ 14/20] เริ่มต้นแท็บตั้งค่า (SettingsTab State & ตัวแปร)
 // ==================== 3. แท็บตั้งค่า (SETTINGS) ====================
 class SettingsTab extends StatefulWidget {
   final String serverIp;
@@ -485,8 +469,6 @@ class _SettingsTabState extends State<SettingsTab> {
     super.initState();
     _loadSettingsFromServer();
   }
-
-09:08 Pongpun.n // [ส่วนที่ 15/20] ฟังก์ชันโหลดและบันทึกการตั้งค่าจากเซิร์ฟเวอร์
   Future<void> _loadSettingsFromServer() async {
     try {
       final url = Uri.parse('http://${widget.serverIp}:${widget.serverPort}/api/device-sync');
@@ -547,8 +529,6 @@ class _SettingsTabState extends State<SettingsTab> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เกิดข้อผิดพลาด: $e')));
     }
   }
-
-09:08 Pongpun.n // [ส่วนที่ 16/20] UI แถวปรับตั้งเวลาวาล์วแต่ละตัว
   Widget _buildValveTimerRow(int valveIndex) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
@@ -581,8 +561,6 @@ class _SettingsTabState extends State<SettingsTab> {
       ),
     );
   }
-
-09:08 Pongpun.n // [ส่วนที่ 17/20] โครงสร้างหน้าจอตั้งค่าทั้งหมด (Settings UI)
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -634,8 +612,6 @@ class _SettingsTabState extends State<SettingsTab> {
               ],
             ),
           ),
-
-09:08 Pongpun.n // [ส่วนที่ 18/20] ส่วนจัดการ Token และปุ่มบันทึกการตั้งค่า
           const Divider(color: Colors.white24),
           const Text('🔑 จัดการรหัสอุปกรณ์ (Token สำหรับบอร์ด)', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF4ADE80))),
           ListTile(
@@ -679,8 +655,6 @@ class _SettingsTabState extends State<SettingsTab> {
     );
   }
 }
-
-09:08 Pongpun.n // [ส่วนที่ 19/20] เริ่มต้นแท็บสุขภาพพืช (PlantConditionTab)
 // ==================== 4. แท็บสุขภาพพืช (PLANT CONDITION) ====================
 class PlantConditionTab extends StatelessWidget {
   final String serverIp;
@@ -711,8 +685,6 @@ class PlantConditionTab extends StatelessWidget {
             ),
           ),
           SizedBox(height: 16),
-
-09:08 Pongpun.n // [ส่วนที่ 20/20] รายงานการขาดธาตุอาหารและแมลงศัตรูพืช (สิ้นสุดโปรแกรม)
           Card(
             child: Padding(
               padding: EdgeInsets.all(16.0),

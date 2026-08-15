@@ -1,231 +1,542 @@
-import React, { useState, useEffect, useRef } from 'react';
-import {
-  StyleSheet,
-  Text,
-  View,
-  ScrollView,
-  TouchableOpacity,
-  Switch,
-  TextInput,
-  SafeAreaView,
-  StatusBar,
-  Dimensions,
-  Alert,
-  Platform
-} from 'react-native';
-import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
-import Svg, { Path, Circle } from 'react-native-svg';
+//โค๊ดหลัก
+#include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
+#include <ESP8266WebServer.h>
+#include <DNSServer.h>
+#include <WiFiManager.h>
+#include <EEPROM.h>
+#include <Wire.h>
+#include <ArduinoJson.h>
+#include <PCF8574.h>
+#include "RTClib.h"
+#include "DHT.h"
+#define TOTAL_BEDS 6
+#define TOTAL_RELAYS 8
+#define FLASH_BUTTON 0
+#define LED_PIN LED_BUILTIN
+#define DHTPIN D7
+#define DHTTYPE DHT11
+// Ultrasonic water-level sensor (HC-SR04 style)
+#define TRIG_PIN D5
+#define ECHO_PIN D6
+// กำหนดขาปุ่มกดฮาร์ดแวร์เพิ่มเติม
+#define MANUAL_BUTTON_PIN D0   // ปุ่มสลับวาล์ว 1-6 แบบกดวนรอบ
+#define MASTER_OFF_PIN    D8   // ปุ่มปิดระบบด่วน (Master Off)
 
-const screenWidth = Dimensions.get('window').width - 32;
+const int TANK_DEPTH_CM = 250;   // ความลึกถัง 2 เมตร 50 ซม. (ถังขนาด 3000 ลิตร)
+const int SENSOR_OFFSET_CM = 25; // ระยะวัดขั้นต่ำของ JSN-SR04
+// รีเลย์บอร์ด (ใช้ I2C ที่ขา D3/D4)
+PCF8574 relayBoard(0x20);
+struct SPVSetting {
+int openMin;
+int closeMax;
+};
+struct TimeHM {
+int8_t hour;
+int8_t minute;
+};
+struct ValveSchedule {
+TimeHM startTime;
+TimeHM stopTime;
+bool enabled;
+};
+struct ConfigData {
+char farmName[30];
+char deviceToken[37];
+bool isRegistered;
+SPVSetting spv[TOTAL_BEDS];
+bool isAutoMode;
+bool usePump;
 
-export default function ActivityDashboard() {
-  const [isDarkMode, setIsDarkMode] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isGoalReached, setIsGoalReached] = useState(false);
+int pumpDelaySec;
+int valveDurationMin[TOTAL_BEDS]; // เปลี่ยนเป็นเก็บค่าเวลาตั้งต้นกันลืมเป็น "นาที"
+ValveSchedule valveSchedules[TOTAL_BEDS][2];
+bool savedRelays[TOTAL_RELAYS];
+};
+const char* CUSTOM_SERVER_IP = "202.139.203.218";
+const int   CUSTOM_SERVER_PORT = 8080;
+ConfigData sysConfig;
+bool relayState[TOTAL_RELAYS] = {false, false, false, false, false, false, false, false};
+unsigned long manualOpenStartTime[TOTAL_BEDS] = {0, 0, 0, 0, 0, 0};
+bool isManualTimedOpen[TOTAL_BEDS] = {false, false, false, false, false, false};
+// ตัวแปรสำหรับระบบหน่วงเวลาปั๊มน้ำ
+unsigned long valveTriggerTime = 0;
+bool isWaitingForPumpDelay = false;
+bool previousAnyValveState = false;
+// ตัวแปรสำหรับปุ่มกดแมนนวล (D0) และปุ่มปิดด่วน (D8)
+int manualValveStep = 0;
+bool lastManualButtonState = HIGH;
+bool lastMasterOffState = HIGH;
+unsigned long lastDebounceTimeD0 = 0;
+unsigned long lastDebounceTimeD8 = 0;
 
-  // ข้อมูลสมมติสำหรับกราฟวงกลม (Progress Circle)
-  const size = 150;
-  const strokeWidth = 15;
-  const center = size / 2;
-  const radius = (size - strokeWidth) / 2;
-  const circumference = radius * 2 * Math.PI;
-  const progress = 0.75; // 75%
-
-  return (
-    <SafeAreaView style={[styles.container, isDarkMode && styles.containerDark]}>
-      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-      
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={[styles.greeting, isDarkMode && styles.textWhite]}>สวัสดี, ผู้ใช้งาน 👋</Text>
-          <Text style={styles.subtitle}>วันนี้คุณทำได้ดีมาก!</Text>
-        </View>
-        <TouchableOpacity style={styles.profileBtn}>
-          <Ionicons name="person-circle" size={40} color={isDarkMode ? "#fff" : "#333"} />
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        
-        {/* Progress Card (ใช้ SVG) */}
-        <View style={[styles.card, isDarkMode && styles.cardDark]}>
-          <Text style={[styles.cardTitle, isDarkMode && styles.textWhite]}>เป้าหมายการเดิน</Text>
-          <View style={styles.chartContainer}>
-            <Svg width={size} height={size}>
-              {/* วงกลมพื้นหลัง */}
-              <Circle
-                stroke={isDarkMode ? "#333" : "#E0E0E0"}
-                cx={center}
-                cy={center}
-                r={radius}
-                strokeWidth={strokeWidth}
-              />
-              {/* วงกลมแสดง Progress */}
-              <Circle
-                stroke="#4CAF50"
-                cx={center}
-                cy={center}
-                r={radius}
-                strokeWidth={strokeWidth}
-                strokeDasharray={circumference}
-                strokeDashoffset={circumference * (1 - progress)}
-                strokeLinecap="round"
-                rotation="-90"
-                origin={`${center}, ${center}`}
-              />
-            </Svg>
-            <View style={styles.chartLabel}>
-              <Text style={[styles.stepsText, isDarkMode && styles.textWhite]}>7,500</Text>
-              <Text style={styles.stepsSubtext}>จาก 10,000 ก้าว</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Settings / Toggles */}
-        <View style={[styles.card, isDarkMode && styles.cardDark]}>
-          <View style={styles.row}>
-            <View style={styles.iconCircle}>
-              <Ionicons name="moon" size={20} color="#5C6BC0" />
-            </View>
-            <Text style={[styles.rowText, isDarkMode && styles.textWhite]}>โหมดกลางคืน</Text>
-            <Switch
-              value={isDarkMode}
-              onValueChange={setIsDarkMode}
-              trackColor={{ false: "#767577", true: "#81b0ff" }}
-              thumbColor={isDarkMode ? "#f5dd4b" : "#f4f3f4"}
-            />
-          </View>
-
-          <View style={[styles.row, { borderTopWidth: 1, borderTopColor: isDarkMode ? '#333' : '#F0F0F0', marginTop: 15, paddingTop: 15 }]}>
-            <View style={styles.iconCircle}>
-              <MaterialCommunityIcons name="bell-ring" size={20} color="#FF7043" />
-            </View>
-            <Text style={[styles.rowText, isDarkMode && styles.textWhite]}>แจ้งเตือนเป้าหมาย</Text>
-            <Switch
-              value={isGoalReached}
-              onValueChange={setIsGoalReached}
-            />
-          </View>
-        </View>
-
-        {/* Input Field */}
-        <View style={[styles.searchContainer, isDarkMode && styles.searchContainerDark]}>
-          <Ionicons name="search" size={20} color="#999" />
-          <TextInput
-            style={[styles.input, isDarkMode && styles.textWhite]}
-            placeholder="ค้นหากิจกรรม..."
-            placeholderTextColor="#999"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-        </View>
-
-      </ScrollView>
-    </SafeAreaView>
-  );
+const unsigned long debounceDelay = 50;
+int soilVal1 = 30;
+int soilVal2 = 25;
+float airTemp = 28.5;
+float airHum = 82.0;
+int tankWaterLevel = 80;
+float calculatedVPD = 1.1;
+String diseaseRisk = "สูง (High) 🔴 อันตราย 🥵";
+String diseaseAdvice = "เสี่ยงสูงเกิดโรคราน้ำค้างและเชื้อรา ควร รีบระบายอากาศและพ่นยา 🤭🦠";
+RTC_DS3231 rtc;
+DHT dht(DHTPIN, DHTTYPE);
+WiFiClient client;
+unsigned long lastServerSync = 0;
+unsigned long flashButtonPressTime = 0;
+bool lastFlashButtonState = HIGH;
+bool isPortalActive = false;
+WiFiManagerParameter custom_token_param("token", "Device Token บอร์ดหลัก", sysConfig.deviceToken, 37);
+void saveConfigToEEPROM() {
+for (int i = 0; i < TOTAL_RELAYS; i++) {
+sysConfig.savedRelays[i] = relayState[i];
+}
+EEPROM.put(0, sysConfig);
+EEPROM.commit();
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F8F9FA',
-  },
-  containerDark: {
-    backgroundColor: '#121212',
-  },
-  scrollContent: {
-    padding: 16,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 20,
-  },
-  greeting: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#666',
-  },
-  textWhite: {
-    color: '#FFF',
-  },
-  card: {
-    backgroundColor: '#FFF',
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  cardDark: {
-    backgroundColor: '#1E1E1E',
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 15,
-  },
-  chartContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  chartLabel: {
-    position: 'absolute',
-    alignItems: 'center',
-  },
-  stepsText: {
-    fontSize: 28,
-    fontWeight: 'bold',
-  },
-  stepsSubtext: {
-    fontSize: 12,
-    color: '#999',
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  iconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#F0F2F5',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  rowText: {
-    flex: 1,
-    fontSize: 16,
-    color: '#444',
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    height: 50,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-  },
-  searchContainerDark: {
-    backgroundColor: '#2C2C2C',
-    borderColor: '#444',
-  },
-  input: {
-    flex: 1,
-    marginLeft: 10,
-    fontSize: 16,
-  },
-});
+void loadConfigFromEEPROM() {
+EEPROM.get(0, sysConfig);
+if (sysConfig.farmName[0] == 255 || sysConfig.farmName[0] == '\0') {
+sysConfig.isRegistered = false;
+strcpy(sysConfig.farmName, "Parna Organic");
+strcpy(sysConfig.deviceToken, "PARNA-TOKEN-2026-MAIN");
+sysConfig.isAutoMode = true;
+sysConfig.usePump = true;
+sysConfig.pumpDelaySec = 3;
+// ตั้งค่าเวลาเปิดกันลืมเริ่มต้นเป็น 1 นาทีต่อวาล์ว (รองรับการบวกลบทีละ 1 นาที)
+for (int i = 0; i < TOTAL_BEDS; i++) {
+sysConfig.valveDurationMin[i] = 1;
+}
+for (int i = 0; i < TOTAL_BEDS; i++) {
+sysConfig.valveSchedules[i][0] = {{6, 0}, {6, 30}, true};
+sysConfig.valveSchedules[i][1] = {{17, 0}, {17, 30}, true};
+}
+for (int i = 0; i < TOTAL_BEDS; i++) {
+sysConfig.spv[i] = {30, 70};
+}
+
+for (int i = 0; i < TOTAL_RELAYS; i++) {
+sysConfig.savedRelays[i] = false;
+}
+saveConfigToEEPROM();
+} else {
+for (int i = 0; i < TOTAL_RELAYS; i++) {
+relayState[i] = sysConfig.savedRelays[i];
+}
+}
+}
+void clearAllSettings() {
+for (int i = 0; i < sizeof(ConfigData); i++) { EEPROM.write(i, 0); }
+EEPROM.commit();
+WiFiManager wifiManager;
+wifiManager.resetSettings();
+ESP.restart();
+}
+void saveParamCallback() {
+strcpy(sysConfig.deviceToken, custom_token_param.getValue());
+saveConfigToEEPROM();
+}
+void startOfflinePortalMode() {
+isPortalActive = true;
+
+WiFi.mode(WIFI_AP);
+WiFi.softAP("nodemcu-main-setup");
+for (int i = 0; i < 6; i++) {
+digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+delay(200);
+yield();
+}
+digitalWrite(LED_PIN, HIGH);
+}
+void checkResetButton() {
+bool currentButtonState = digitalRead(FLASH_BUTTON);
+if (currentButtonState == LOW && lastFlashButtonState == HIGH) {
+flashButtonPressTime = millis();
+}
+if (currentButtonState == LOW) {
+unsigned long pressDuration = millis() - flashButtonPressTime;
+if (pressDuration >= 10000 && pressDuration < 10500) {
+for (int i = 0; i < 10; i++) {
+digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+delay(100);
+yield();
+}
+clearAllSettings();
+}
+ } else if (currentButtonState == HIGH && lastFlashButtonState == LOW) {
+unsigned long pressDuration = millis() - flashButtonPressTime;
+if (pressDuration >= 1000 && pressDuration < 10000) {
+startOfflinePortalMode();
+}
+}
+lastFlashButtonState = currentButtonState;
+}
+int readTankWaterLevel() {
+digitalWrite(TRIG_PIN, LOW);
+delayMicroseconds(4);
+digitalWrite(TRIG_PIN, HIGH);
+delayMicroseconds(12);
+digitalWrite(TRIG_PIN, LOW);
+long duration = pulseIn(ECHO_PIN, HIGH, 40000);
+if (duration == 0) return tankWaterLevel;
+int distanceCm = duration * 0.034 / 2;
+int waterHeightCm = TANK_DEPTH_CM - distanceCm;
+int maxWaterHeight = TANK_DEPTH_CM - SENSOR_OFFSET_CM;
+int percent = map(waterHeightCm, 0, maxWaterHeight, 0, 100);
+return constrain(percent, 0, 100);
+}
+
+void calculateVPDAndDiseaseRisk(float temp, float hum) {
+float svp = 0.61078 * exp((17.27 * temp) / (temp + 237.3));
+float avp = svp * (hum / 100.0);
+calculatedVPD = svp - avp;
+if (calculatedVPD < 0) calculatedVPD = 0;
+if (hum > 85.0 && temp >= 20.0 && temp <= 30.0) {
+diseaseRisk = "สูง (High) 🔴 อันตราย 🥵";
+diseaseAdvice = "เสี่ยงสูงเกิดโรคราน้ำค้างและเชื้อรา ควร รีบระบายอากาศและพ่นยา 🤭🦠";
+} else if (hum > 75.0 || calculatedVPD < 0.4) {
+diseaseRisk = "ปานกลาง (Medium) 🟡 ระดับเฝ้าระวัง 🥲";
+diseaseAdvice = "พบสัญญาณเบื้องต้นของการขาดธาตุไนโตรเจน (ใบแก่เหลือง) ในแปลงปลูกที่ 2 ☘️🪾";
+} else {
+diseaseRisk = "ต่ำ (Low) 🟢 ปลอดภัย 😚";
+diseaseAdvice = "พบเพลี้ยอ่อนระบาดเล็กน้อยในแปลงปลูกที่ 1 ไม่ต้องดำเนินการทันที ให้เฝ้าระวังต่อ 🐜🌴";
+}
+}
+void readSensors() {
+float h = dht.readHumidity();
+float t = dht.readTemperature();
+
+if (!isnan(h) && !isnan(t)) {
+airHum = h;
+airTemp = t;
+calculateVPDAndDiseaseRisk(airTemp, airHum);
+}
+tankWaterLevel = readTankWaterLevel();
+}
+void updateRelaysHardware() {
+for (int i = 0; i < TOTAL_RELAYS; i++) {
+relayBoard.write(i, relayState[i] ? LOW : HIGH);
+}
+}
+void checkManualTimedValves() {
+unsigned long currentMillis = millis();
+for (int bed = 0; bed < TOTAL_BEDS; bed++) {
+if (isManualTimedOpen[bed] && relayState[bed]) {
+// แปลงค่า "นาที" ให้เป็น "มิลลิวินาที" (นาที * 60 วินาที * 1000 มิลลิวินาที)
+unsigned long durationMillis = (unsigned long)sysConfig.valveDurationMin[bed] * 60UL * 1000UL;
+if (currentMillis - manualOpenStartTime[bed] >= durationMillis) {
+relayState[bed] = false;
+isManualTimedOpen[bed] = false;
+updateRelaysHardware();
+saveConfigToEEPROM();
+}
+}
+}
+}
+
+ void handlePhysicalButtons() {
+int readingD0 = digitalRead(MANUAL_BUTTON_PIN);
+if (readingD0 != lastManualButtonState) {
+lastDebounceTimeD0 = millis();
+}
+if ((millis() - lastDebounceTimeD0) > debounceDelay) {
+static bool buttonD0LastProcessedState = HIGH;
+if (readingD0 == LOW && buttonD0LastProcessedState == HIGH) {
+manualValveStep++;
+if (manualValveStep > 6) manualValveStep = 1;
+for (int i = 0; i < 6; i++) {
+relayState[i] = false;
+isManualTimedOpen[i] = false;
+}
+int targetValve = manualValveStep - 1;
+relayState[targetValve] = true;
+manualOpenStartTime[targetValve] = millis();
+if (targetValve < TOTAL_BEDS) {
+isManualTimedOpen[targetValve] = true;
+}
+updateRelaysHardware();
+saveConfigToEEPROM();
+}
+buttonD0LastProcessedState = readingD0;
+}
+
+lastManualButtonState = readingD0;
+int readingD8 = digitalRead(MASTER_OFF_PIN);
+if (readingD8 != lastMasterOffState) {
+lastDebounceTimeD8 = millis();
+}
+if ((millis() - lastDebounceTimeD8) > debounceDelay) {
+static bool buttonD8LastProcessedState = HIGH;
+if (readingD8 == LOW && buttonD8LastProcessedState == HIGH) {
+manualValveStep = 0;
+for (int i = 0; i < TOTAL_RELAYS; i++) {
+relayState[i] = false;
+}
+for (int i = 0; i < TOTAL_BEDS; i++) {
+isManualTimedOpen[i] = false;
+}
+isWaitingForPumpDelay = false;
+updateRelaysHardware();
+saveConfigToEEPROM();
+}
+buttonD8LastProcessedState = readingD8;
+}
+lastMasterOffState = readingD8;
+}
+
+ void processSPVLogic() {
+checkManualTimedValves();
+if (!sysConfig.isAutoMode) return;
+if (soilVal1 < sysConfig.spv[0].openMin) {
+relayState[0] = true;
+} else if (soilVal1 >= sysConfig.spv[0].closeMax) {
+relayState[0] = false;
+}
+if (soilVal2 < sysConfig.spv[1].openMin) {
+relayState[1] = true;
+} else if (soilVal2 >= sysConfig.spv[1].closeMax) {
+relayState[1] = false;
+}
+DateTime now = rtc.now();
+int currentTotalMins = now.hour() * 60 + now.minute();
+for (int bed = 0; bed < TOTAL_BEDS; bed++) {
+bool scheduleActive = false;
+for (int i = 0; i < 2; i++) {
+if (sysConfig.valveSchedules[bed][i].enabled) {
+int startTotalMins = sysConfig.valveSchedules[bed][i].startTime.hour * 60 + sysConfig.valveSchedules[bed][i].startTime.minute;
+int stopTotalMins = sysConfig.valveSchedules[bed][i].stopTime.hour * 60 + sysConfig.valveSchedules[bed][i].stopTime.minute;
+
+if (startTotalMins < stopTotalMins) {
+if (currentTotalMins >= startTotalMins && currentTotalMins < stopTotalMins) {
+scheduleActive = true;
+break;
+}
+} else if (startTotalMins > stopTotalMins) {
+if (currentTotalMins >= startTotalMins || currentTotalMins < stopTotalMins) {
+scheduleActive = true;
+break;
+}
+}
+}
+}
+if (scheduleActive) {
+relayState[bed] = true;
+}
+}
+bool anyValveOpen = false;
+for (int i = 0; i < TOTAL_RELAYS - 1; i++) {
+if (i == 6) continue;
+if (relayState[i]) {
+anyValveOpen = true;
+break;
+}
+}
+
+if (sysConfig.usePump) {
+if (anyValveOpen && !previousAnyValveState) {
+valveTriggerTime = millis();
+isWaitingForPumpDelay = true;
+}
+else if (!anyValveOpen) {
+relayState[7] = false;
+isWaitingForPumpDelay = false;
+}
+if (isWaitingForPumpDelay && anyValveOpen) {
+unsigned long delayMillis = (unsigned long)sysConfig.pumpDelaySec * 1000UL;
+if (millis() - valveTriggerTime >= delayMillis) {
+relayState[7] = true;
+isWaitingForPumpDelay = false;
+}
+}
+} else {
+relayState[7] = false;
+isWaitingForPumpDelay = false;
+}
+previousAnyValveState = anyValveOpen;
+updateRelaysHardware();
+saveConfigToEEPROM();
+}
+
+ void syncWithCloudServer() {
+if (!isPortalActive && WiFi.status() == WL_CONNECTED) {
+HTTPClient http;
+String serverPath = "http://" + String(CUSTOM_SERVER_IP) + ":" + String(CUSTOM_SERVER_PORT) + "/api/device-sync";
+http.begin(client, serverPath);
+http.addHeader("Content-Type", "application/json");
+http.addHeader("Authorization", "Bearer " + String(sysConfig.deviceToken));
+DateTime now = rtc.now();
+char timeBuf[10];
+snprintf(timeBuf, sizeof(timeBuf), "%02d:%02d:%02d", now.hour(), now.minute(), now.second());
+StaticJsonDocument<2048> doc;
+doc["farmName"] = sysConfig.farmName;
+doc["token"] = sysConfig.deviceToken;
+doc["time"] = timeBuf;
+doc["soilMoisture"] = soilVal1;
+doc["soil1"] = soilVal1;
+doc["soil2"] = soilVal2;
+doc["tankLevel"] = tankWaterLevel;
+doc["temperature"] = airTemp;
+
+ doc["airHumidity"] = airHum;
+doc["vpd"] = calculatedVPD;
+doc["diseaseRisk"] = diseaseRisk;
+doc["diseaseAdvice"] = diseaseAdvice;
+doc["isAuto"] = sysConfig.isAutoMode;
+doc["usePump"] = sysConfig.usePump;
+doc["pumpDelay"] = sysConfig.pumpDelaySec;
+// ส่งข้อมูลเวลาเปิดวาล์วเป็นหน่วย "นาที" (valveDurationMin)
+JsonArray valveDurArr = doc.createNestedArray("valveDurationMin");
+for (int i = 0; i < TOTAL_BEDS; i++) {
+valveDurArr.add(sysConfig.valveDurationMin[i]);
+}
+JsonArray valveSchedArray = doc.createNestedArray("valveSchedules");
+for (int bed = 0; bed < TOTAL_BEDS; bed++) {
+JsonArray bedArr = valveSchedArray.createNestedArray();
+for (int i = 0; i < 2; i++) {
+JsonObject period = bedArr.createNestedObject();
+period["en"] = sysConfig.valveSchedules[bed][i].enabled;
+JsonObject start = period.createNestedObject("start");
+start["h"] = sysConfig.valveSchedules[bed][i].startTime.hour;
+start["m"] = sysConfig.valveSchedules[bed][i].startTime.minute;
+
+JsonObject stop = period.createNestedObject("stop");
+stop["h"] = sysConfig.valveSchedules[bed][i].stopTime.hour;
+stop["m"] = sysConfig.valveSchedules[bed][i].stopTime.minute;
+}
+}
+JsonArray relays = doc.createNestedArray("relays");
+for (int i = 0; i < TOTAL_RELAYS; i++) {
+relays.add(relayState[i]);
+}
+String jsonPayload;
+serializeJson(doc, jsonPayload);
+int httpResponseCode = http.POST(jsonPayload);
+if (httpResponseCode > 0) {
+String responseString = http.getString();
+StaticJsonDocument<2048> resDoc;
+DeserializationError error = deserializeJson(resDoc, responseString);
+if (!error) {
+if (resDoc.containsKey("soil1")) {
+soilVal1 = resDoc["soil1"];
+}
+if (resDoc.containsKey("soil2")) {
+soilVal2 = resDoc["soil2"];
+}
+if (resDoc["action"] == "relay") {
+int ch = resDoc["channel"];
+bool st = resDoc["state"];
+if (ch >= 0 && ch < TOTAL_RELAYS) {
+
+relayState[ch] = st;
+if (ch < TOTAL_BEDS) {
+if (st) {
+manualOpenStartTime[ch] = millis();
+isManualTimedOpen[ch] = true;
+} else {
+isManualTimedOpen[ch] = false;
+}
+}
+updateRelaysHardware();
+saveConfigToEEPROM();
+}
+}
+if (resDoc.containsKey("isAuto")) {
+sysConfig.isAutoMode = resDoc["isAuto"];
+saveConfigToEEPROM();
+}
+if (resDoc.containsKey("usePump")) {
+sysConfig.usePump = resDoc["usePump"];
+saveConfigToEEPROM();
+}
+// คำสั่งเพิ่มเวลาทีละ 1 นาทีจากแอป/เซิร์ฟเวอร์
+if (resDoc["action"] == "increaseValveTime") {
+int bed = resDoc["bed"];
+if (bed >= 0 && bed < TOTAL_BEDS) {
+sysConfig.valveDurationMin[bed] += 1;
+if (sysConfig.valveDurationMin[bed] > 1440) sysConfig.valveDurationMin[bed] = 1440;
+saveConfigToEEPROM();
+}
+}
+// คำสั่งลดเวลาทีละ 1 นาทีจากแอป/เซิร์ฟเวอร์
+if (resDoc["action"] == "decreaseValveTime") {
+int bed = resDoc["bed"];
+if (bed >= 0 && bed < TOTAL_BEDS) {
+sysConfig.valveDurationMin[bed] -= 1;
+if (sysConfig.valveDurationMin[bed] < 1) sysConfig.valveDurationMin[bed] = 1;
+saveConfigToEEPROM();
+}
+}
+// รับค่าการตั้งเวลาวาล์วหน่วยเป็น "นาที" จากเซิร์ฟเวอร์/แอป
+if (resDoc.containsKey("valveDurationMin")) {
+JsonArray durArr = resDoc["valveDurationMin"];
+for (int i = 0; i < TOTAL_BEDS && i < durArr.size(); i++) {
+int newMin = durArr[i];
+if (newMin < 1) newMin = 1;
+sysConfig.valveDurationMin[i] = newMin;
+}
+saveConfigToEEPROM();
+}
+if (resDoc.containsKey("pumpDelay")) {
+sysConfig.pumpDelaySec = resDoc["pumpDelay"];
+saveConfigToEEPROM();
+}
+if (resDoc.containsKey("valveSchedules")) {
+JsonArray newValveScheds = resDoc["valveSchedules"];
+for (int bed = 0; bed < TOTAL_BEDS && bed < newValveScheds.size(); bed++) {
+JsonArray bedArr = newValveScheds[bed];
+for (int i = 0; i < 2 && i < bedArr.size(); i++) {
+sysConfig.valveSchedules[bed][i].enabled = bedArr[i]["en"];
+sysConfig.valveSchedules[bed][i].startTime.hour = bedArr[i]["start"]["h"];
+sysConfig.valveSchedules[bed][i].startTime.minute = bedArr[i]["start"]["m"];
+sysConfig.valveSchedules[bed][i].stopTime.hour = bedArr[i]["stop"]["h"];
+sysConfig.valveSchedules[bed][i].stopTime.minute = bedArr[i]["stop"]["m"];
+}
+}
+saveConfigToEEPROM();
+}
+}
+}
+http.end();
+}
+}
+void setup() {
+Serial.begin(115200);
+EEPROM.begin(1024);
+pinMode(FLASH_BUTTON, INPUT_PULLUP);
+pinMode(LED_PIN, OUTPUT);
+digitalWrite(LED_PIN, HIGH);
+pinMode(TRIG_PIN, OUTPUT);
+pinMode(ECHO_PIN, INPUT);
+pinMode(MANUAL_BUTTON_PIN, INPUT_PULLUP);
+pinMode(MASTER_OFF_PIN, INPUT_PULLUP);
+Wire.begin(D1, D2);
+if (!rtc.begin()) {
+Serial.println("Couldn't find RTC");
+}
+Wire.pins(D4, D3);
+relayBoard.begin();
+dht.begin();
+loadConfigFromEEPROM();
+updateRelaysHardware();
+WiFiManager wm;
+wm.setTimeout(180);
+wm.addParameter(&custom_token_param);
+wm.setSaveConfigCallback(saveParamCallback);
+if (!wm.autoConnect("NodeMCU-Main-Setup")) {
+ESP.restart();
+}
+}
+void loop() {
+checkResetButton();
+handlePhysicalButtons();
+if (isPortalActive) return;
+unsigned long currentMillis = millis();
+if (currentMillis - lastServerSync >= 4000) {
+lastServerSync = currentMillis;
+readSensors();
+processSPVLogic();
+syncWithCloudServer();
+}
+yield();
+}
